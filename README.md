@@ -1,4 +1,4 @@
-# Smart_Water_Treatment_Plant
+# Smart-Water-Treatment-Plant
 
 The World Health Organization reports that for the first time ever, the majority of the world's population lives in a city, and this proportion continues to grow with projections of 70 percent by 2050.
 
