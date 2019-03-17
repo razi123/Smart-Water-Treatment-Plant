@@ -1,0 +1,55 @@
+#include <mysql/mysql.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+void finish_with_error(MYSQL *con)
+{
+  fprintf(stderr, "%s\n", mysql_error(con));
+  mysql_close(con);
+  exit(1);
+}
+
+main() {
+ MYSQL *conn;
+   MYSQL_RES *res;
+   MYSQL_RES *result;
+   MYSQL_ROW row;
+   MYSQL_FIELD *field;
+   char *server = "localhost";
+   char *user = "root";
+   char *password = "raghu"; /* set me first */
+   char *database = "SMART_WATER_TREATMENT_PLANT";
+   conn = mysql_init(NULL);
+int val=9;
+char query[100]={0};
+int state;
+  /* Connect to database */
+
+   if (!mysql_real_connect(conn, server,
+         user, password, database, 0, NULL, 0)) {
+      fprintf(stderr, "%s\n", mysql_error(conn));
+      exit(1);
+   }
+
+
+      if(mysql_select_db(conn,"SMART_WATER_TREATMENT_PLANT")!=0)
+      {
+        fprintf(stderr,"%s \n",mysql_error(conn));
+        mysql_close(conn);
+        exit(1);
+      }
+	  
+	  sprintf(query,"UPDATE sensor_info SET sensor_value=9 WHERE sensor_id=1");
+
+      if (mysql_query(conn,query))
+      {
+          fprintf(stderr, "%s\n", mysql_error(conn));
+          mysql_close(conn);
+          exit(1);
+      }
+
+	  
+	   mysql_free_result(res);
+   mysql_close(conn);
+}
+

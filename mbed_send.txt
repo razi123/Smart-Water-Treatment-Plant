@@ -1,0 +1,143 @@
+#include "mbed.h"
+#include "string.h"
+
+// send
+
+DigitalOut myled(LED1);
+
+DigitalIn reservoir_level_sensor(p5); 
+DigitalIn aer_low_level_sensor(p6);
+DigitalIn aer_high_level_sensor(p7);
+DigitalIn cog_low_level_sensor(p8);
+DigitalIn cog_high_level_sensor(p11);
+InterruptIn sensor_flow(p17);
+DigitalIn floc_low_level_sensor(p12);
+DigitalIn floc_high_level_sensor(p28);
+DigitalIn filterartion_low_level_sensor(p29); //33
+DigitalIn filterartion_high_level_sensor(p15);
+AnalogIn floc_turbidity(p18);//P1_1
+AnalogIn salanity_sensor_read(p16);
+DigitalIn purewater_low_level_sensor(p26);
+DigitalIn purewater_high_level_sensor(p27);
+
+Serial pc(USBTX, USBRX);
+Serial blue(p13, p14); 
+Ticker flipper;
+
+int NbTopsFan;  // Flow control interrupt enable
+int Calc;       // Flow sensor liter/hr calculations
+unsigned char sensor_values[17];
+char out_buf[12];
+
+int *purewater_tank_control(void)
+{
+    sensor_values[10] = filterartion_low_level_sensor;
+    sensor_values[13] = purewater_low_level_sensor;
+    sensor_values[14] = purewater_high_level_sensor;
+    sensor_values[15] = salanity_sensor_read;
+    return 0;     
+}
+
+int *filteration_tank_control(void)
+{
+    sensor_values[10] = filterartion_low_level_sensor;
+    sensor_values[11] = filterartion_high_level_sensor;
+    sensor_values[12] = floc_turbidity;
+    return 0;     
+}
+
+int *clariflocculator_tank_control(void)
+{
+    sensor_values[5] = cog_low_level_sensor;
+    sensor_values[8] = floc_low_level_sensor;
+    sensor_values[9] = floc_high_level_sensor;
+    return 0;     
+}
+
+int turbidity_sensor(void)
+{
+    sensor_values[12]=floc_turbidity;
+    return 0;
+}
+
+void rpm()     //This function increments on the rising edge of the hall effect sensors signal
+{ 
+    NbTopsFan++;  
+} 
+
+float flow_sensor(void)
+{
+    NbTopsFan = 0;                  //Set NbTops to 0 ready for calculations
+    myled=1;
+    sensor_flow.rise(&rpm);              //Enables rising edge interrupt
+    wait_ms(500);                  //Wait 1 second and count HALL pulses
+    sensor_flow.rise(NULL);              //Disable interrupt
+    Calc = ((NbTopsFan * 60)/60);
+    Calc= Calc / 7.5;  //(Pulse frequency x 60) / 7.5Q, = flow rate in L/hour 
+    sensor_values[7]=Calc;          // flow sensor value
+    return Calc;   
+}
+
+int *reservoir_aeration_level_control(void)
+{
+    sensor_values[2] = reservoir_level_sensor;
+    sensor_values[3] = aer_low_level_sensor;
+    sensor_values[4] = aer_high_level_sensor;
+    return 0;
+}
+ 
+int *cogulation_tank_control(void)
+{
+    sensor_values[3] = aer_low_level_sensor;
+    sensor_values[5] = cog_low_level_sensor;
+    sensor_values[6] = cog_high_level_sensor;
+    return 0;     
+}
+
+void send()
+{
+    int reservoir_level_value;
+    float flow_read;
+    int *res_aer_sensor;
+    int *cog_tank_sensor;
+    int *floc_tank_sensor;
+    int *filteration_tank_sensor;
+    int *purewater_tank_sensor;
+    int turbidity_read;
+    
+    sensor_values[0]='#';  // start bit 
+    sensor_values[1]=170;  // device address
+    sensor_values[16]='*'; // stop bit
+ 
+    //while(1)
+    {
+            res_aer_sensor= reservoir_aeration_level_control(); 
+            flow_read=flow_sensor();
+            turbidity_read=turbidity_sensor();//not done
+            cog_tank_sensor=cogulation_tank_control();
+            floc_tank_sensor=clariflocculator_tank_control();
+            filteration_tank_sensor = filteration_tank_control();
+            purewater_tank_sensor = purewater_tank_control();
+
+            blue.printf("%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",sensor_values[0],sensor_values[1],sensor_values[2],sensor_values[3],
+            sensor_values[4],sensor_values[5],sensor_values[6],sensor_values[7],sensor_values[8],sensor_values[9],sensor_values[10],
+            sensor_values[11],sensor_values[12],sensor_values[13],sensor_values[14],sensor_values[15],sensor_values[16]);
+            
+            pc.printf("%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c%c",sensor_values[0],sensor_values[1],sensor_values[2],sensor_values[3],
+            sensor_values[4],sensor_values[5],sensor_values[6],sensor_values[7],sensor_values[8],sensor_values[9],sensor_values[10],
+            sensor_values[11],sensor_values[12],sensor_values[13],sensor_values[14],sensor_values[15],sensor_values[16]);
+    }
+}
+
+
+int main()
+{
+    blue.baud(9600);
+ flipper.attach(&send,4);
+ 
+    // while(1)
+    //{
+      //    send();
+    //}
+}
+

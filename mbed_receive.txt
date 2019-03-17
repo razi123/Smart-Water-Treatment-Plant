@@ -1,0 +1,133 @@
+#include "mbed.h"
+#include "string.h"
+
+//recieve
+
+DigitalOut myled1(LED1);
+DigitalOut myled2(LED2);
+DigitalOut myled3(LED3);
+DigitalOut myled4(LED4);
+
+DigitalOut reservoir_pump(p5);
+DigitalOut aeration_valve(p6);
+DigitalOut cog_valve(p7);
+DigitalOut cog_mixer(p8);             
+DigitalOut floc_valve(p11);
+DigitalOut floc_mixer(p12);
+DigitalOut aer_fountain(p28);
+DigitalOut filteration_tank_valve(p30);
+DigitalOut cog_alum_add_valve(p27);
+//InterruptIn sensor_flow(p15);
+
+Serial pc(USBTX, USBRX);
+Serial blue(p13, p14); 
+unsigned char sensor_values[17];
+char out_buf[12];
+
+void  process_start()
+{
+    char buf[7];
+    char buf1[5];
+    int i,count=0;
+    while(1)
+    { 
+        if(blue.readable())
+        {
+            for(i=0;i<=7;i++)
+            {
+                buf[i]=blue.getc();
+                //printf("buf[0]=%c",buf[i]);
+                if(buf[i]=='2')
+                    break;
+            }
+        if(buf[0]=='1')
+        {
+            memset(buf1,0,5);
+            for(i=1;i<6;i++)
+            {
+                buf1[i-1]=buf[i]; 
+            }
+                wait(1);
+         //     printf("%s",buf1);
+            if(strcmp(buf1,"start")==0)
+            { 
+                count=1; 
+            }
+            else if(strcmp(buf1,"stops")==0)
+            {
+             //pc.printf("i am in stop\r\n");
+                count=1;
+        }
+        }   
+    }
+        if(count==1)
+        break;  
+    }  
+        
+}
+
+void device_control()
+{
+       
+    myled2=1;
+   // start_bit=out_buf[0];
+   // device_addr=out_buf[1];
+    reservoir_pump = out_buf[2];
+    aer_fountain = out_buf[3];        
+    aeration_valve = out_buf[4];        
+    cog_mixer = out_buf[5];             
+    cog_valve = out_buf[6];
+    floc_mixer = out_buf[7];
+    floc_valve = out_buf[8];
+    cog_alum_add_valve = out_buf[9];
+    filteration_tank_valve = out_buf[10];
+   // stop_bit=out_buf[11];
+  //  pc.printf("%c%c%c%c%c%c%c%c%c",out_buf[0]out_buf[1]out_buf[2]out_buf[3]out_buf[4]out_buf[5]out_buf[6]out_buf[7]out_buf[8]); 
+
+    
+    
+    
+
+}
+
+void recieve()
+{
+    // pc.printf("i am in recieve\r\n");
+    int i;
+    char buf[12];
+    while(1)
+    {
+        if(blue.readable())
+        { //pc.printf("i am in while recieve\r\n");
+            memset(buf,0,12);
+            memset(out_buf,0,12);
+            for(i=0;i<12;i++)
+            {
+                buf[i]=blue.getc();
+                pc.printf("%c",buf[i]);
+                myled2=2;
+                if(buf[0]=='#')
+                {
+                    out_buf[i]=buf[i];
+                 // pc.putc(blue.getc());
+                 // pc.printf("%c",out_buf[i]); 
+                    if(buf[i]=='*')
+                    break;
+                }
+            }
+        }
+        device_control(); 
+    }
+}  
+
+int main()
+{
+    pc.printf("i am in main\r\n");
+    blue.baud(9600);
+    //    process_start();
+    while(1)
+    {
+        recieve();
+    }
+}
+

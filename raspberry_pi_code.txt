@@ -1,0 +1,630 @@
+#include<stdio.h>
+#include<string.h>
+#include<errno.h>
+#include<wiringPi.h>
+#include<wiringSerial.h>
+#include<semaphore.h>
+#include<unistd.h>
+#include<pthread.h>
+#include<mysql/mysql.h>
+#include<stdlib.h>
+
+void sql_my(void);
+void start_proc(void);
+void sensor_process(char *);
+unsigned char output_packet[12];
+unsigned char output_packet1[12];
+unsigned char act_buf[12];
+unsigned char dum_buf[3];
+unsigned char database_buf[17];
+
+int fd,fd1;
+pthread_t tid1,tid2;
+unsigned char buf[17];
+sem_t sema;
+   MYSQL *conn;
+   MYSQL_RES *res;
+   MYSQL_RES *result;
+   MYSQL_ROW row;
+   MYSQL_FIELD *field;
+char query[100]={0};
+char query1[100]={0};
+
+
+void database_init()
+{
+   char *server = "localhost";
+   char *user = "root";
+   char *password = "raghu"; /* set me first */
+   char *database = "SMART_WATER_TREATMENT_PLANT";
+   int val=9;
+   conn = mysql_init(NULL);
+   int state;
+  /* Connect to database */
+
+
+   if (!mysql_real_connect(conn, server,
+         user, password, database, 0, NULL, 0)) {
+      fprintf(stderr, "%s\n", mysql_error(conn));
+      exit(1);
+   }
+
+
+      if(mysql_select_db(conn,"SMART_WATER_TREATMENT_PLANT")!=0)
+      {
+        fprintf(stderr,"%s \n",mysql_error(conn));
+        mysql_close(conn);
+        exit(1);
+      }
+}
+
+void database_actuator(int m)
+{
+memset(query1,0,sizeof query1);
+
+//if(output_packet1[m]==1)
+//strncpy(dum_buf,"on",2);
+//else
+//strcpy(dum_buf[],"off");
+//      printf("data_pack=%d",output_packet[k]);
+//unsigned char name[3]={'o','n','\0'};
+
+ sprintf(query1,"UPDATE actuator SET actuator_state=%d,date_time=NOW() WHERE actuator_id=%d",output_packet1[m],(m-1));
+
+      if (mysql_query(conn,query1))
+      {
+          fprintf(stderr, "%s\n", mysql_error(conn));
+          mysql_close(conn);
+          exit(1);
+      }
+           mysql_free_result(res);
+//         mysql_close(conn);
+}
+
+
+
+
+void database_sensor(int k)
+{
+memset(query,0,sizeof query);
+
+//      printf("data_pack=%d",output_packet[k]);
+        sprintf(query,"UPDATE sensors SET sensor_value=%d,date_time=NOW() WHERE sensor_id=%d",buf[k],(k-1));
+
+      if (mysql_query(conn,query))
+      {
+          fprintf(stderr, "%s\n", mysql_error(conn));
+          mysql_close(conn);
+          exit(1);
+      }
+           mysql_free_result(res);
+//         mysql_close(conn);
+}
+
+/*
+void start_proc(void)
+{
+char start_pkt[7]="1start2";
+int i;
+for(i=0;i<7;i++)
+{
+serialPutchar(fd,start_pkt[i]);
+printf("%c\n",start_pkt[i]);
+delay(1);
+}
+}*/
+
+void *send(void *arg)
+{
+int y=20,j;
+
+//output_packet[0]='#';output_packet[1]=170;output_packet[2]=1;output_packet[3]=1;output_packet[4]=1;output_packet[5]=1;
+//output_packet[6]=1;output_packet[7]=1;output_packet[8]=1;output_packet[9]=1;output_packet[10]=1;output_packet[11]='*';
+
+while(1)
+{
+        sem_wait(&sema);
+        for(j=0;j<12;j++)
+        {
+                serialPutchar(fd1,output_packet[j]);
+                delay(1);
+                if(output_packet[j]!='#')
+                {
+                if(output_packet[j]!=170)
+                {
+                if(output_packet[j]!='*')
+                {
+//              printf("%d",output_packet[j]);
+//              printf("\n");
+  //              database_actuator(j);
+                delay(100);             }
+                }
+                }
+        }
+}
+//      printf("\n");
+        pthread_exit((void*)y);
+}
+
+
+void *receive(void *arg)
+{
+char from_mbed_buf[17];
+int i,x=10;
+//printf("I am inside function\n");
+
+//output_packet1[0]=20;output_packet1[1]=78;output_packet1[2]=3;output_packet1[3]=4;output_packet1[4]=5;output_packet1[5]=6;
+//output_packet1[6]=7;output_packet1[7]=8;output_packet1[8]=9;output_packet1[9]=10;output_packet1[10]=11;output_packet1[11]=12;
+//output_packet1[12]=13;output_packet1[13]=14;
+
+while(1)
+{
+        if(serialDataAvail(fd))
+        {
+//      printf("I am inside receive\n");
+        memset(from_mbed_buf,0,17);
+                memset(buf,0,17);
+                for(i=0;i<17;i++)
+                {
+                        from_mbed_buf[i]=serialGetchar(fd);
+                        if(from_mbed_buf[0]=='#')
+                        {
+                                buf[i]=from_mbed_buf[i];
+                                if(buf[i]!='#')
+                                {
+                                if(buf[i]!=170)
+                                {
+                                if(buf[i]!='*')
+                                {
+                        //      printf("mbed =%d\n",buf[i]);
+//                              database_sensor(i);
+                                delay(100);
+                                }
+                                }
+                                }
+                                if(from_mbed_buf[i]=='*')
+                                break;
+                        }
+                }
+/*
+for(i=0;i<12;i++)
+{
+dum_buf[i]=output_packet1[i];
+database_transfer(i);
+}
+*/
+
+
+sensor_process(buf);
+sem_post(&sema);
+delay(100);
+
+printf("%c%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%c",from_mbed_buf[0],from_mbed_buf[1],from_mbed_buf[2],from_mbed_buf[3],from_mbed_buf[4],from_mbed_buf[5],
+from_mbed_buf[6],from_mbed_buf[7],from_mbed_buf[8],from_mbed_buf[9],from_mbed_buf[10],from_mbed_buf[11],from_mbed_buf[12],from_mbed_buf[13],from_mbed_buf[14$
+from_mbed_buf[15],from_mbed_buf[16]);
+printf("\n");     //very important dont comment
+delay(100);
+}
+}
+memset(output_packet,0,12);
+memset(output_packet1,0,12);
+memset(act_buf,0,12);
+memset(dum_buf,0,3);
+memset(database_buf,0,17);
+
+
+pthread_exit((int*)x);
+}
+
+
+void sensor_process(char *ptr)
+{
+unsigned char start_bit=*(ptr);
+unsigned char dev_addr=*(1+ptr);
+unsigned char reservoir_level_sensor=*(2+ptr);
+unsigned char aer_low_level_sensor=*(3+ptr);
+unsigned char aer_high_level_sensor=*(4+ptr);
+unsigned char cog_low_level_sensor=*(5+ptr);
+unsigned char cog_high_level_sensor=*(6+ptr);
+unsigned char Calc=*(7+ptr);
+unsigned char floc_low_level_sensor=*(8+ptr);
+unsigned char floc_high_level_sensor=*(9+ptr);
+unsigned char filterartion_low_level_sensor=*(10+ptr);
+unsigned char filterartion_high_level_sensor=*(11+ptr);
+unsigned char floc_turbidity=*(12+ptr);
+unsigned char purewater_low_level_sensor=*(13+ptr);
+unsigned char purewater_high_level_sensor=*(14+ptr);
+unsigned char salinity_sensor=*(15+ptr);
+unsigned char stop_bit=*(16+ptr);
+
+unsigned char reservoir_pump;
+unsigned char aeration_valve;
+unsigned char cog_mixer;
+unsigned char aer_fountain;
+unsigned char cog_alum_add_valve;
+unsigned char cog_valve;
+unsigned char floc_mixer;
+unsigned char floc_valve;
+unsigned char filteration_tank_valve;
+
+//printf("%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",start_bit,dev_addr,reservoir_level_sensor,aer_low_level_sensor,aer_high_level_sensor,cog_low_level_sensor,
+//cog_high_level_sensor,Calc,floc_low_level_sensor,floc_high_level_sensor,filterartion_low_level_sensor,filterartion_high_level_sensor,floc_turbidity,
+//purewater_low_level_sensor,purewater_high_level_sensor,salinity_sensor,stop_bit);
+
+//printf("%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",*(ptr),*(1+ptr),*(2+ptr),*(3+ptr),*(4+ptr),*(5+ptr),*(6+ptr),*(7+ptr),*(8+ptr),*(9+ptr),*(10+ptr),*(11+ptr),
+// *(12+ptr),*(13+ptr),*(14+ptr),*(15+ptr),*(16+ptr));
+//printf("\n");
+//delay(1000);
+
+
+output_packet[0]=start_bit;
+output_packet[1]=dev_addr;
+output_packet[11]=stop_bit;
+
+if((reservoir_level_sensor == 0)&&(aer_low_level_sensor == 1)&&(aer_high_level_sensor == 0))
+{
+        reservoir_pump = 0;
+        output_packet[2]= reservoir_pump;
+        aer_fountain = 1;
+        output_packet[3]= aer_fountain;
+}
+if((reservoir_level_sensor == 0)&&(aer_low_level_sensor == 1)&&(aer_high_level_sensor == 1))
+{
+        reservoir_pump = 0;
+        output_packet[2]=reservoir_pump;
+        aer_fountain= 1;
+        output_packet[3]=aer_fountain;
+}
+if((reservoir_level_sensor == 1)&&(aer_low_level_sensor == 0)&&(aer_high_level_sensor == 0))
+{
+        reservoir_pump = 1;
+        output_packet[2]=reservoir_pump;
+        aer_fountain= 0;
+        output_packet[3]=aer_fountain;
+}
+if((reservoir_level_sensor == 1)&&(aer_low_level_sensor == 1)&&(aer_high_level_sensor == 0))
+{
+        reservoir_pump = 1;
+        output_packet[2]=reservoir_pump;
+        aer_fountain= 1;
+        output_packet[3]=aer_fountain;
+}
+if((reservoir_level_sensor ==1)&&(aer_low_level_sensor == 1)&&(aer_high_level_sensor == 1))
+{
+        reservoir_pump = 0;
+        output_packet[2]=reservoir_pump;
+        aer_fountain= 1;
+        output_packet[3]=aer_fountain;
+}
+
+if((reservoir_level_sensor ==0)&&(aer_low_level_sensor == 0)&&(aer_high_level_sensor == 0))
+{
+        reservoir_pump = 0;
+        output_packet[2]=reservoir_pump;
+        aer_fountain= 0;
+        output_packet[3]=aer_fountain;
+}
+
+/*
+else
+{
+        reservoir_pump = 0;
+        output_packet[2]=reservoir_pump;
+        aer_fountain= 0;
+        output_packet[3]=aer_fountain;
+}
+*/
+
+if((aer_low_level_sensor == 0)&&(cog_low_level_sensor == 1)&&(cog_high_level_sensor == 0))
+{
+        aeration_valve= 0;
+        output_packet[4]=aeration_valve;
+        cog_mixer=0;   //1
+        output_packet[5]=cog_mixer;
+        cog_alum_add_valve=0;
+        output_packet[9]=cog_alum_add_valve;
+}
+if((aer_low_level_sensor == 0)&&(cog_low_level_sensor == 1)&&(cog_high_level_sensor == 1))
+{
+        aeration_valve= 0;
+        output_packet[4]=aeration_valve;
+        cog_mixer= 1;
+        output_packet[5]=cog_mixer;
+        cog_alum_add_valve=1;
+        output_packet[9]=cog_alum_add_valve;
+}
+if((aer_low_level_sensor == 1)&&(cog_low_level_sensor == 0)&&(cog_high_level_sensor == 0))
+{
+        aeration_valve= 1;
+        output_packet[4 ]=aeration_valve;
+        cog_mixer= 0;   //1
+        output_packet[5]=cog_mixer;
+        cog_alum_add_valve=0;
+        output_packet[9]=cog_alum_add_valve;
+}
+if((aer_low_level_sensor == 1)&&(cog_low_level_sensor == 1)&&(cog_high_level_sensor == 0))
+{
+        aeration_valve= 1;
+        output_packet[4]=aeration_valve;
+        cog_mixer=0;  //1
+        output_packet[5]=cog_mixer;
+        cog_alum_add_valve=0;
+        output_packet[9]=cog_alum_add_valve;
+}
+if((aer_low_level_sensor == 1)&&(cog_low_level_sensor == 1)&&(cog_high_level_sensor == 1))
+    {
+        aeration_valve= 0;
+        output_packet[4]=aeration_valve;
+        cog_mixer= 1;
+        output_packet[5]=cog_mixer;
+        cog_alum_add_valve=1;
+        output_packet[9]=cog_alum_add_valve;
+    }
+if((aer_low_level_sensor == 0)&&(cog_low_level_sensor == 0)&&(cog_high_level_sensor == 0))
+    {
+        aeration_valve= 0;
+        output_packet[4]=aeration_valve;
+        cog_mixer= 0;
+        output_packet[5]=cog_mixer;
+        cog_alum_add_valve=0;
+        output_packet[9]=cog_alum_add_valve;
+    }
+
+/*
+else
+{
+        aeration_valve= 0;
+        output_packet[4]=aeration_valve;
+        cog_mixer= 0;
+        output_packet[5]=cog_mixer;
+        cog_alum_add_valve=0;
+        output_packet[9]=cog_alum_add_valve;
+
+}
+*/
+
+// ************************ Clariflocculation************************************
+
+if((cog_low_level_sensor == 0)&&(floc_low_level_sensor == 1)&&(floc_high_level_sensor == 0))
+{
+        cog_valve= 0;
+        output_packet[6]=cog_valve;
+        floc_mixer= 1;
+        output_packet[7]=floc_mixer;
+}
+if((cog_low_level_sensor == 0)&&(floc_low_level_sensor == 1)&&(floc_high_level_sensor == 1))
+{
+        cog_valve= 0;
+        output_packet[6]=cog_valve;
+        floc_mixer= 1;
+        output_packet[7]=floc_mixer;
+}
+if((cog_low_level_sensor == 1)&&(floc_low_level_sensor == 0)&&(floc_high_level_sensor == 0))
+{
+        cog_valve= 1;
+        output_packet[6]=cog_valve;
+        floc_mixer= 1;
+        output_packet[7]=floc_mixer;
+}
+if((cog_low_level_sensor == 1)&&(floc_low_level_sensor == 1)&&(floc_high_level_sensor == 0))
+{
+        cog_valve= 1;
+        output_packet[6]=cog_valve;
+        floc_mixer= 1;
+        output_packet[7]=floc_mixer;
+}
+
+if((cog_low_level_sensor == 1)&&(floc_low_level_sensor == 1)&&(floc_high_level_sensor == 1))
+{
+        cog_valve= 0;
+        output_packet[6]=cog_valve;
+        floc_mixer= 1;
+        output_packet[7]=floc_mixer;
+}
+if((cog_low_level_sensor == 0)&&(floc_low_level_sensor == 0)&&(floc_high_level_sensor == 0))
+{
+        cog_valve= 0;
+        output_packet[6]=cog_valve;
+        floc_mixer= 0;
+        output_packet[7]=floc_mixer;
+}
+
+
+/*
+else
+{
+        cog_valve= 0;
+        output_packet[6]=cog_valve;
+        floc_mixer= 0;
+        output_packet[7]=floc_mixer;
+
+}
+*/
+
+
+// ****************************** Filteration********************************************
+
+if((filterartion_low_level_sensor == 0)&&(filterartion_high_level_sensor == 0)&&(floc_low_level_sensor== 1))
+{
+        floc_valve=1;
+        output_packet[8]=floc_valve;       // floc_valve=1;
+}
+if((filterartion_low_level_sensor == 1)&&(filterartion_high_level_sensor == 0)&&(floc_low_level_sensor == 0))
+{
+        floc_valve=0;
+        output_packet[8]=floc_valve;       // floc_valve=1;
+}
+if((filterartion_low_level_sensor == 1)&&(filterartion_high_level_sensor == 0)&&(floc_low_level_sensor == 1))
+{
+        floc_valve=1;
+        output_packet[8]=floc_valve;       // floc_valve=1
+}
+if((filterartion_low_level_sensor == 1)&&(filterartion_high_level_sensor == 1)&&(floc_low_level_sensor == 0))
+{
+        floc_valve=0;
+        output_packet[8]=floc_valve;
+}
+if((filterartion_low_level_sensor == 1)&&(filterartion_high_level_sensor == 1)&&(floc_low_level_sensor == 1))
+{
+        floc_valve=0;
+        output_packet[8]=floc_valve;
+}
+if((filterartion_low_level_sensor == 0)&&(filterartion_high_level_sensor == 0)&&(floc_low_level_sensor == 0))
+{
+        floc_valve=0;
+        output_packet[8]=floc_valve;
+}
+/*
+else
+{
+        floc_valve=0;
+        output_packet[8]=floc_valve;
+}
+*/
+// ************************************Pure water tank**********************************************************
+
+if((filterartion_low_level_sensor == 0)&&(purewater_low_level_sensor == 1)&&(purewater_high_level_sensor == 0))
+{
+        filteration_tank_valve=0;
+        output_packet[10]=filteration_tank_valve;
+}
+if((filterartion_low_level_sensor == 0)&&(purewater_low_level_sensor == 1)&&(purewater_high_level_sensor == 1))
+{
+        filteration_tank_valve=0;
+        output_packet[10]=filteration_tank_valve;
+}
+if((filterartion_low_level_sensor == 1)&&(purewater_low_level_sensor == 0)&&(purewater_high_level_sensor == 0))
+{
+        filteration_tank_valve=1;
+        output_packet[10]=filteration_tank_valve;
+}
+if((filterartion_low_level_sensor == 1)&&(purewater_low_level_sensor == 1)&&(purewater_high_level_sensor == 0))
+{
+        filteration_tank_valve=1;
+        output_packet[10]=filteration_tank_valve;
+}
+if((filterartion_low_level_sensor == 1)&&(purewater_low_level_sensor == 1)&&(purewater_high_level_sensor == 1))
+{
+        filteration_tank_valve=0;
+        output_packet[10]=filteration_tank_valve;
+}
+if((filterartion_low_level_sensor == 0)&&(purewater_low_level_sensor == 0)&&(purewater_high_level_sensor == 0))
+{
+        filteration_tank_valve=0;
+        output_packet[10]=filteration_tank_valve;
+}
+
+
+if((reservoir_level_sensor==0)&&(aer_low_level_sensor==0)&&(aer_high_level_sensor==0)&&(cog_low_level_sensor==0)
+&&(cog_high_level_sensor==0)&&(floc_low_level_sensor==0)&&(floc_high_level_sensor==0)&&(filterartion_low_level_sensor==0)
+&&(filterartion_high_level_sensor==0)&&(purewater_low_level_sensor==0)&&(purewater_high_level_sensor==0))
+
+{
+        reservoir_pump = 0;
+        output_packet[2]=reservoir_pump;
+
+        aer_fountain= 0;
+        output_packet[3]=aer_fountain;
+
+        aeration_valve= 0;
+        output_packet[4]=aeration_valve;
+
+        cog_mixer= 0;
+        output_packet[5]=cog_mixer;
+
+        cog_alum_add_valve=0;
+        output_packet[9]=cog_alum_add_valve;
+
+        cog_valve= 0;
+        output_packet[6]=cog_valve;
+
+        floc_mixer= 0;
+        output_packet[7]=floc_mixer;
+
+        floc_valve=0;
+        output_packet[8]=floc_valve;
+
+        filteration_tank_valve=0;
+        output_packet[10]=filteration_tank_valve;
+}
+
+
+//printf("%c%d%d%d%d%d%d%d%d%d%d%c",output_packet[0],output_packet[1],output_packet[2],output_packet[3],output_packet[4],output_packet[5]
+//,output_packet[6],output_packet[7],output_packet[8],output_packet[9],output_packet[10],output_packet[11]);
+
+//printf("\n");
+
+}
+
+int main()
+{
+int ret1,ret2,tmp,tmp1,tmp2,a=2,b=3;
+tmp=sem_init(&sema,0,0);
+
+
+if ((fd = serialOpen("/dev/ttyUSB0",38400)) < 0)
+  {
+   printf("In usb0\n");
+   fprintf (stderr, "Unable to open serial device: %s\n", strerror(errno)) ;
+   return 1 ;
+  }
+
+
+if ((fd1 = serialOpen("/dev/ttyUSB1",38400)) < 0)
+  {
+   printf("In usb1\n");
+   fprintf (stderr, "Unable to open serial device: %s\n", strerror(errno)) ;
+   return 1 ;
+  }
+
+
+if (wiringPiSetup() == -1)
+  {
+    printf("In setup()\n");
+    fprintf (stdout, "Unable to start wiringPi: %s\n", strerror (errno)) ;
+    return 1 ;
+  }
+//   database_init();
+    //start_proc();
+
+   printf("In manin\n");
+   tmp1=pthread_create(&tid1,NULL,&receive,(void*)&a);
+   tmp2=pthread_create(&tid2,NULL,&send,(void*)&a);
+
+   pthread_join(tid1,(void**)&ret1);
+   pthread_cancel(tid1);
+
+   pthread_join(tid2,(void**)&ret2);
+   pthread_cancel(tid2);
+
+
+return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
